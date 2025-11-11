@@ -1,0 +1,5 @@
+{
+  "name": "STTK Management System",
+  "description": "A comprehensive STTK Management System for Area Managers. Features an overview dashboard with key metrics and charts, a detailed data view, KPI tracking, and a form for submitting new STTK reports. The system is designed for efficient monitoring and data analysis.",
+  "requestFramePermissions": []
+}
