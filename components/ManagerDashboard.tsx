@@ -83,9 +83,10 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ sttkData }) 
     const activeAMs = new Set(sttkData.map(e => e.namaAM)).size;
 
     // 4. Performa Area Manager
-    // FIX: Explicitly type the accumulator for the `reduce` function.
-    // This ensures TypeScript knows the shape of `performance`, preventing properties from being inferred as `unknown`.
-    const performance = sttkData.reduce((acc, entry) => {
+    // FIX: Explicitly typing the accumulator for the `reduce` function ensures
+    // TypeScript knows the shape of `performance`, preventing properties on its
+    // values (like `total`) from being inferred as `unknown`.
+    const performance = sttkData.reduce((acc: Record<string, AmPerformance>, entry) => {
       if (!acc[entry.namaAM]) {
         const amPenaltyInfo = entry.penaltyDistribution?.find(p => p.jabatan === 'Area Manager');
         const masaKerja = amPenaltyInfo ? amPenaltyInfo.masaKerja : 'N/A';
@@ -98,7 +99,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({ sttkData }) 
         acc[entry.namaAM].pending++;
       }
       return acc;
-    }, {} as Record<string, AmPerformance>);
+    }, {});
 
     // 5. Tren Pengiriman (5 bulan terakhir)
     const trend = Array.from({ length: 5 }, (_, i) => {

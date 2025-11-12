@@ -44,12 +44,13 @@ export const KpiView: React.FC<KpiViewProps> = ({ sttkData }) => {
     }
 
     // 1. AM dengan Jumlah STTK Tertinggi
-    // FIX: Explicitly type the accumulator for the `reduce` function.
-    // This ensures TypeScript knows the shape of `submissionsByAm`, preventing `count` from being inferred as `unknown`.
-    const submissionsByAm = sttkData.reduce((acc, entry: SttkEntry) => {
+    // FIX: Explicitly typing the accumulator for the `reduce` function ensures
+    // that `submissionsByAm` has the correct type (`Record<string, number>`),
+    // which prevents `count` from being inferred as `unknown`.
+    const submissionsByAm = sttkData.reduce((acc: Record<string, number>, entry: SttkEntry) => {
       acc[entry.namaAM] = (acc[entry.namaAM] || 0) + 1;
       return acc;
-    }, {} as Record<string, number>);
+    }, {});
 
     const amSubmissions = Object.entries(submissionsByAm)
       .map(([am, count]) => ({ am, count }))

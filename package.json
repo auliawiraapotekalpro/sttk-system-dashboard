@@ -1,6 +1,6 @@
 {
-  "name": "sttk-management-alpro",
-  "homepage": "https://auliawiraapotekalpro.github.io/sttk-system/",
+  "name": "sttk-system-dashboard",
+  "homepage": "https://auliawiraapotekalpro.github.io/sttk-system-dashboard/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "tailwindcss": "^3.4.3",
     "postcss": "^8.4.38",
     "autoprefixer": "^10.4.19",
-    "gh-pages": "^6.1.1"
+    "gh-pages": "^6.1.1",
+    "rimraf": "^5.0.7"
   }
 }

@@ -1,7 +1,7 @@
 import { User } from '../types';
 
 // PENTING: Ganti dengan URL Web App Anda dari Google Apps Script
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyWRffK9AZefBu9NZvCWyj_BgShFzIA65TL8KWkGJWQAjtZCILIx5pQAsDJR3zWN7cUhQ/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8_Jm97f2SRcjHMtPz42cMh140QMf0wqCPFj-eTsdiG0_KCp0xktOfZJa7e7Q-by2APQ/exec";
 
 /**
  * Mengirim laporan STTK baru ke Google Apps Script menggunakan metode satu langkah (Base64).

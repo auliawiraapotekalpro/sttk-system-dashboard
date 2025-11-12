@@ -3,12 +3,10 @@
   <p align="center">
     Sistem Manajemen STTK komprehensif untuk Manajer Area dan Manajer.
     <br />
-    <a href="https://github.com/auliawiraapotekalpro/sttk-system"><strong>Jelajahi Dokumen »</strong></a>
     <br />
-    <br />
-    <a href="https://auliawiraapotekalpro.github.io/sttk-system/">Lihat Demo</a>
+    <a href="#">Lihat Demo</a>
     ·
-    <a href="https://github.com/auliawiraapotekalpro/sttk-system/issues">Laporkan Bug</a>
+    <a href="#">Laporkan Bug</a>
   </p>
 </div>
 
@@ -76,8 +74,8 @@ Aplikasi ini menggunakan Google Apps Script yang terhubung ke Google Sheet sebag
 
 1.  **Clone Repositori**
     ```sh
-    git clone https://github.com/auliawiraapotekalpro/sttk-system.git
-    cd sttk-system
+    git clone https://github.com/USERNAME/NEW_REPO_NAME.git
+    cd NEW_REPO_NAME
     ```
 2.  **Instal Dependensi NPM**
     ```sh
@@ -109,16 +107,16 @@ Proyek ini sudah dikonfigurasi untuk deployment yang mudah ke GitHub Pages.
       // vite.config.ts
       export default defineConfig({
         // ...
-        base: '/sttk-system/', // <-- Ganti jika nama repo Anda berbeda
+        base: '/NAMA_REPO_ANDA/', // <-- Ganti dengan nama repo Anda
       })
       ```
 2.  **Konfigurasi `package.json`**
     - Buka `package.json`.
-    - Tambahkan properti `homepage` di bagian atas file, ganti `auliawiraapotekalpro` dengan nama pengguna GitHub Anda jika berbeda.
+    - Tambahkan properti `homepage` di bagian atas file, ganti `USERNAME` dan `NAMA_REPO_ANDA`.
     ```json
     {
-      "name": "sttk-management-alpro",
-      "homepage": "https://auliawiraapotekalpro.github.io/sttk-system/",
+      "name": "nama-proyek-anda",
+      "homepage": "https://USERNAME.github.io/NAMA_REPO_ANDA/",
       // ...
     }
     ```
