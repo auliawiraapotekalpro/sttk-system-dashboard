@@ -4,13 +4,13 @@
     Sistem Manajemen STTK komprehensif untuk Manajer Area dan Manajer.
     <br />
     <br />
-    <a href="#">Lihat Demo</a>
+    <a href="https://auliawiraapotekalpro.github.io/sttk-system-dashboard/">Lihat Demo</a>
     ·
-    <a href="#">Laporkan Bug</a>
+    <a href="https://github.com/auliawiraapotekalpro/sttk-system-dashboard/issues">Laporkan Bug</a>
   </p>
 </div>
 
-![Project Banner](https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6)
+![STTK Management System Banner](https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6)
 
 ## Tentang Proyek
 
@@ -74,8 +74,8 @@ Aplikasi ini menggunakan Google Apps Script yang terhubung ke Google Sheet sebag
 
 1.  **Clone Repositori**
     ```sh
-    git clone https://github.com/USERNAME/NEW_REPO_NAME.git
-    cd NEW_REPO_NAME
+    git clone https://github.com/auliawiraapotekalpro/sttk-system-dashboard.git
+    cd sttk-system-dashboard
     ```
 2.  **Instal Dependensi NPM**
     ```sh
@@ -102,21 +102,21 @@ Proyek ini sudah dikonfigurasi untuk deployment yang mudah ke GitHub Pages.
 
 1.  **Konfigurasi `vite.config.ts`**
     - Buka `vite.config.ts`.
-    - Ubah properti `base` agar sesuai dengan nama repositori Anda.
+    - Pastikan properti `base` diatur ke nama repositori Anda. Seharusnya sudah dikonfigurasi dengan benar.
       ```ts
       // vite.config.ts
       export default defineConfig({
         // ...
-        base: '/NAMA_REPO_ANDA/', // <-- Ganti dengan nama repo Anda
+        base: '/sttk-system-dashboard/', // <-- Sudah dikonfigurasi
       })
       ```
 2.  **Konfigurasi `package.json`**
     - Buka `package.json`.
-    - Tambahkan properti `homepage` di bagian atas file, ganti `USERNAME` dan `NAMA_REPO_ANDA`.
+    - Pastikan properti `homepage` menunjuk ke URL GitHub Pages Anda. Seharusnya sudah diatur.
     ```json
     {
-      "name": "nama-proyek-anda",
-      "homepage": "https://USERNAME.github.io/NAMA_REPO_ANDA/",
+      "name": "sttk-system-dashboard",
+      "homepage": "https://auliawiraapotekalpro.github.io/sttk-system-dashboard/",
       // ...
     }
     ```

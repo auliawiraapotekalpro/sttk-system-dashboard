@@ -4,12 +4,13 @@ import { Input } from './ui/Input';
 import { Button } from './ui/Button';
 import { FileUpload } from './ui/FileUpload';
 import { Select } from './ui/Select';
-import { addSttkReport } from '../services/apiService';
+import { addSttkReport, getDropdownOptions } from '../services/apiService';
 import { Loader2, CheckCircle, AlertTriangle, Plus, Trash2, X, Users, File as FileIcon } from 'lucide-react';
 import { Employee } from '../types';
 
 interface FormDataState {
   namaAM: string;
+  nipAM: string;
   area: string;
   namaToko: string;
   tanggalSttk: string;
@@ -29,6 +30,7 @@ interface FileData {
 
 const initialFormData: FormDataState = {
   namaAM: '',
+  nipAM: '',
   area: '',
   namaToko: '',
   tanggalSttk: '',
@@ -39,30 +41,8 @@ const initialLossData = { selisihPlus: '', selisihMinus: '', edAwal: '' };
 const initialVarianceData = { nilaiPlus: '', nilaiMinus: '', edAwal: '' };
 const initialEmployeeState: Employee = { id: `emp-${Date.now()}`, nama: '', nip: '', jabatan: '', masaKerja: '' };
 
-const amOptions = [
-  'ADE IRMA S. A.',
-  'APRIANA LUMBAN GAOL',
-  'AULIALOLA GALUS',
-  'BAID SION BR SINAGA',
-  'CAMELIA FITRIANI',
-  'FUNNA ANINDYA',
-  'GENY SARASWATI',
-  'HANNA DOLI BR KABAN',
-  'ISMA LESTARI',
-  'JEPPARIA M SIREGAR',
-  'JESIKA SILITONGA',
-  'JULAINI',
-  'LELIANA OKTAVIA SARAGIH',
-  'LINDA NOVAWATI S',
-  'NARTA LENA GINTING',
-  'NUR ADE ARYANI',
-  'RYAN ADILA',
-  'SANNAULI SIAHAAN',
-  'SITI NURLAILA',
-  'SUSI SUKAESIH'
-];
 const areaOptions = [ 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Timur', 'Jakarta Pusat', 'Jakarta Selatan', 'Tangerang', 'Tangerang Selatan', 'Bekasi', 'Bogor', 'Depok', 'Bandung' ];
-const jabatanOptions = [ 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)', 'Asistent Apoteker (AA)' ];
+const jabatanOptions = [ 'Area Manager', 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)', 'Asistent Apoteker (AA)' ];
 const masaKerjaOptions = ['> 3 bulan', '< 3 bulan'];
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
@@ -145,6 +125,30 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const [message, setMessage] = useState('');
   const [formKey, setFormKey] = useState(Date.now());
 
+  // State untuk dropdown options
+  const [amOptions, setAmOptions] = useState<{ name: string; nip: string }[]>([]);
+  const [tokoOptions, setTokoOptions] = useState<string[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      setIsLoadingOptions(true);
+      setOptionsError(null);
+      try {
+        const data = await getDropdownOptions();
+        setAmOptions(data.amOptions);
+        setTokoOptions(data.tokoOptions);
+      } catch (error) {
+        console.error("Failed to fetch dropdown options:", error);
+        setOptionsError("Gagal memuat data pilihan dari server. Silakan coba muat ulang halaman.");
+      } finally {
+        setIsLoadingOptions(false);
+      }
+    };
+    fetchOptions();
+  }, []);
+  
   useEffect(() => {
     const dendaLoss = Math.abs(calculatedLoss.dendaAkhir);
     setTotalDendaSttk(dendaLoss + calculatedVariance.denda);
@@ -310,12 +314,41 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
       <form key={formKey} onSubmit={handleSubmit} className="space-y-10">
         <div>
           <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Informasi STTK</h3>
+          {optionsError && (
+              <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-md border border-red-200">
+                  <p className="font-bold">Gagal memuat data</p>
+                  <p>{optionsError}</p>
+              </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Select label="Nama AM" name="namaAM" value={formData.namaAM} onChange={handleInputChange} options={amOptions} required />
+            <Select 
+              label="Nama AM"
+              name="namaAM"
+              value={formData.namaAM}
+              onChange={handleInputChange}
+              options={amOptions.map(am => am.name)}
+              required
+              disabled={isLoadingOptions || !!optionsError}
+              placeholder={isLoadingOptions ? "Memuat..." : "Pilih AM"}
+            />
+            <Input label="NIP AM" name="nipAM" value={formData.nipAM} onChange={handleInputChange} required />
             <Select label="Area" name="area" value={formData.area} onChange={handleInputChange} options={areaOptions} required />
-            <Input label="Nama Toko" name="namaToko" value={formData.namaToko} onChange={handleInputChange} required />
             <Select label="Masa Kerja AM" name="masaKerjaAM" value={formData.masaKerjaAM} onChange={handleInputChange} options={masaKerjaOptions} required />
-            <Input label="Tanggal STTK" name="tanggalSttk" type="date" value={formData.tanggalSttk} onChange={handleInputChange} required className="md:col-span-2" />
+            <div className="md:col-span-2">
+                <Select
+                  label="Nama Toko"
+                  name="namaToko"
+                  value={formData.namaToko}
+                  onChange={handleInputChange}
+                  options={tokoOptions}
+                  required
+                  disabled={isLoadingOptions || !!optionsError}
+                  placeholder={isLoadingOptions ? "Memuat..." : "Pilih Toko"}
+                />
+            </div>
+            <div className="md:col-span-2">
+                <Input label="Tanggal STTK" name="tanggalSttk" type="date" value={formData.tanggalSttk} onChange={handleInputChange} required />
+            </div>
           </div>
         </div>
         

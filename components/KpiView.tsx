@@ -44,13 +44,11 @@ export const KpiView: React.FC<KpiViewProps> = ({ sttkData }) => {
     }
 
     // 1. AM dengan Jumlah STTK Tertinggi
-    // FIX: Explicitly typing the accumulator for the `reduce` function ensures
-    // that `submissionsByAm` has the correct type (`Record<string, number>`),
-    // which prevents `count` from being inferred as `unknown`.
+    // Fix: Explicitly typing the accumulator for the reduce function to ensure 'submissionsByAm' has the correct type Record<string, number>. This resolves type errors in subsequent operations that rely on the 'count' property being a number.
     const submissionsByAm = sttkData.reduce((acc: Record<string, number>, entry: SttkEntry) => {
       acc[entry.namaAM] = (acc[entry.namaAM] || 0) + 1;
       return acc;
-    }, {});
+    }, {} as Record<string, number>);
 
     const amSubmissions = Object.entries(submissionsByAm)
       .map(([am, count]) => ({ am, count }))
@@ -58,8 +56,6 @@ export const KpiView: React.FC<KpiViewProps> = ({ sttkData }) => {
       .slice(0, 4); // Ambil 4 teratas
 
     // 2. Toko Akurasi Terendah (berdasarkan denda varians)
-    // FIX: Explicitly cast `denda` properties to Number to allow arithmetic operations.
-    // This prevents type errors when data from the API might be a string.
     const lowAccuracyStores = sttkData
       .filter((entry: SttkEntry) => entry.varianceDetails && entry.varianceDetails.denda > 0)
       .sort((a: SttkEntry, b: SttkEntry) => Number(b.varianceDetails!.denda) - Number(a.varianceDetails!.denda))

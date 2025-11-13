@@ -1,7 +1,7 @@
 import { User } from '../types';
 
 // PENTING: Ganti dengan URL Web App Anda dari Google Apps Script
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8_Jm97f2SRcjHMtPz42cMh140QMf0wqCPFj-eTsdiG0_KCp0xktOfZJa7e7Q-by2APQ/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzuyrWdrqc6XDg3bBWiGuuJ_lqmAQJRoPGj1ltrdeqq_Q2rRT0h8hKFxf54OTP2eWpZMA/exec";
 
 /**
  * Mengirim laporan STTK baru ke Google Apps Script menggunakan metode satu langkah (Base64).
@@ -64,13 +64,21 @@ export const getDropdownOptions = async () => {
     const response = await fetch(`${WEB_APP_URL}?action=getDropdownOptions`);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json();
-    if (result.status === 'success') return result.data;
+    if (result.status === 'success') {
+      // Pastikan data ada dan berikan nilai default untuk ketahanan
+      return {
+        amOptions: result.data.amOptions || [],
+        tokoOptions: result.data.tokoOptions || [],
+      };
+    }
     throw new Error(result.message || 'Failed to fetch dropdown options.');
   } catch (error) {
     console.error("Error fetching dropdown options:", error);
-    return { amOptions: [] };
+    // Lemparkan kembali error agar komponen UI dapat menanganinya
+    throw error;
   }
 };
+
 
 export const getAllReports = async () => {
   try {
