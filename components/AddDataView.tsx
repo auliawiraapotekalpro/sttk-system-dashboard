@@ -7,6 +7,7 @@ import { Select } from './ui/Select';
 import { addSttkReport, getDropdownOptions } from '../services/apiService';
 import { Loader2, CheckCircle, AlertTriangle, Plus, Trash2, X, Users, File as FileIcon } from 'lucide-react';
 import { Employee } from '../types';
+import { ALL_AM_OPTIONS } from './KpiView';
 
 interface FormDataState {
   namaAM: string;
@@ -40,6 +41,8 @@ const initialFormData: FormDataState = {
 const initialLossData = { selisihPlus: '', selisihMinus: '', edAwal: '' };
 const initialVarianceData = { nilaiPlus: '', nilaiMinus: '', edAwal: '' };
 const initialEmployeeState: Employee = { id: `emp-${Date.now()}`, nama: '', nip: '', jabatan: '', masaKerja: '' };
+const initialOldAmData = { namaAM: '', nipAM: '', masaKerjaAM: '' };
+
 
 const areaOptions = [ 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Timur', 'Jakarta Pusat', 'Jakarta Selatan', 'Tangerang', 'Tangerang Selatan', 'Bekasi', 'Bogor', 'Depok', 'Bandung' ];
 const jabatanOptions = [ 'Area Manager', 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)', 'Asistent Apoteker (AA)' ];
@@ -125,8 +128,10 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const [message, setMessage] = useState('');
   const [formKey, setFormKey] = useState(Date.now());
 
+  const [isAmChanged, setIsAmChanged] = useState(false);
+  const [oldAmData, setOldAmData] = useState(initialOldAmData);
+
   // State untuk dropdown options
-  const [amOptions, setAmOptions] = useState<{ name: string; nip: string }[]>([]);
   const [tokoOptions, setTokoOptions] = useState<string[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
@@ -137,7 +142,6 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
       setOptionsError(null);
       try {
         const data = await getDropdownOptions();
-        setAmOptions(data.amOptions);
         setTokoOptions(data.tokoOptions);
       } catch (error) {
         console.error("Failed to fetch dropdown options:", error);
@@ -180,40 +184,106 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
 
   useEffect(() => {
     if (totalDendaSttk <= 0) {
-      setPenaltyDistribution([]); return;
+      setPenaltyDistribution([]);
+      return;
     }
+
     const dist: PenaltyDistributionItem[] = [];
     const namedEmployees = employees.filter(e => e.nama && e.jabatan && e.masaKerja);
     const hasBM = namedEmployees.some(e => e.jabatan === 'Branch Manager (BM)');
-    const amBasePercent = hasBM ? 7.5 : 10, bmBasePercent = hasBM ? 37.5 : 0, teamPoolPercent = hasBM ? 55 : 90;
 
-    if (formData.namaAM) {
+    // --- LOGIKA BARU UNTUK PERGANTIAN AM ---
+    if (isAmChanged && oldAmData.namaAM && formData.namaAM) {
+      const hasShortTenureStoreEmployee = namedEmployees.some(e => e.masaKerja === '< 3 bulan');
+      const allPersonnel = [
+        { nama: formData.namaAM, nip: formData.nipAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan' },
+        { nama: oldAmData.namaAM, nip: oldAmData.nipAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan' },
+        ...namedEmployees,
+      ];
+
+      if (hasShortTenureStoreEmployee) {
+        // Pengecualian: "Dibagi Rata" untuk semua personel
+        const totalPeople = allPersonnel.length;
+        if (totalPeople > 0) {
+          const penaltyPerPerson = totalDendaSttk / totalPeople;
+          allPersonnel.forEach(p => {
+            dist.push({ ...p, jumlahDenda: penaltyPerPerson });
+          });
+        }
+      } else {
+        // Logika Persentase Baru
+        if (hasBM) {
+          // Dengan BM
+          dist.push({ nama: formData.namaAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.025, nip: formData.nipAM });
+          dist.push({ nama: oldAmData.namaAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.025, nip: oldAmData.nipAM });
+          
+          const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
+          if (bmEmployee) dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * 0.375 });
+
+          const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
+          if (storeTeam.length > 0) {
+            const teamPoolAmount = totalDendaSttk * 0.575; // 55% + 2.5% penyesuaian
+            const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
+            const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
+            if (totalShares > 0) {
+              teamWithShares.forEach(e => {
+                dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
+              });
+            }
+          }
+        } else {
+          // Tanpa BM
+          dist.push({ nama: formData.namaAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.05, nip: formData.nipAM });
+          dist.push({ nama: oldAmData.namaAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.05, nip: oldAmData.nipAM });
+          
+          const storeTeam = namedEmployees; // Semua karyawan adalah tim
+          if (storeTeam.length > 0) {
+            const teamPoolAmount = totalDendaSttk * 0.90;
+            const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
+            const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
+            if (totalShares > 0) {
+              teamWithShares.forEach(e => {
+                dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
+              });
+            }
+          }
+        }
+      }
+    } else {
+      // --- LOGIKA LAMA (DEFAULT) ---
+      const amBasePercent = hasBM ? 7.5 : 10, bmBasePercent = hasBM ? 37.5 : 0, teamPoolPercent = hasBM ? 55 : 90;
+
+      if (formData.namaAM) {
         dist.push({ nama: formData.namaAM, jabatan: 'Area Manager', masaKerja: formData.masaKerjaAM, jumlahDenda: totalDendaSttk * (amBasePercent / 100), nip: 'N/A' });
-    }
-    const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
-    if (hasBM && bmEmployee) {
+      }
+      const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
+      if (hasBM && bmEmployee) {
         dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * (bmBasePercent / 100) });
-    }
-    const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
-    if (storeTeam.length > 0) {
+      }
+      const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
+      if (storeTeam.length > 0) {
         const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
         const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
         if (totalShares > 0) {
-            const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
-            teamWithShares.forEach(e => {
-                dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
-            });
+          const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
+          teamWithShares.forEach(e => {
+            dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
+          });
         }
+      }
     }
+    
+    // Logika pengurutan untuk menampilkan AM di atas, lalu BM
     dist.sort((a,b) => {
-        const order = {'Area Manager': 1, 'Branch Manager (BM)': 2};
-        return (order[a.jabatan] || 3) - (order[b.jabatan] || 3);
+        const order: Record<string, number> = {'Area Manager (Baru)': 1, 'Area Manager (Lama)': 2, 'Area Manager': 1, 'Branch Manager (BM)': 3};
+        return (order[a.jabatan] || 4) - (order[b.jabatan] || 4);
     });
     setPenaltyDistribution(dist);
-  }, [totalDendaSttk, employees, formData.namaAM, formData.masaKerjaAM]);
+  }, [totalDendaSttk, employees, formData, isAmChanged, oldAmData]);
   
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
+  const handleOldAmChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOldAmData(p => ({ ...p, [e.target.name]: e.target.value }));
   const handleLossInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setLossData(p => ({ ...p, [e.target.name]: e.target.value }));
   const handleVarianceInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setVarianceData(p => ({ ...p, [e.target.name]: e.target.value }));
   const handleEmployeeChange = (id: string, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setEmployees(emps => emps.map(emp => emp.id === id ? { ...emp, [e.target.name]: e.target.value } : emp));
@@ -234,6 +304,8 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
       setFiles({ bap: [], expiredList: [], photos: [] });
       setLossData(initialLossData);
       setVarianceData(initialVarianceData);
+      setIsAmChanged(false);
+      setOldAmData(initialOldAmData);
       setFormKey(Date.now());
       setStatus('idle');
       setMessage('');
@@ -265,6 +337,8 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
 
         const reportData = {
             ...formData,
+            isAmChanged,
+            oldAmData: isAmChanged ? oldAmData : null,
             lossDetails: {
               selisihPlus: parseFormattedNumber(lossData.selisihPlus),
               selisihMinus: parseFormattedNumber(lossData.selisihMinus),
@@ -322,18 +396,18 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Select 
-              label="Nama AM"
+              label="Nama AM (Baru)"
               name="namaAM"
               value={formData.namaAM}
               onChange={handleInputChange}
-              options={amOptions.map(am => am.name)}
+              options={ALL_AM_OPTIONS}
               required
-              disabled={isLoadingOptions || !!optionsError}
-              placeholder={isLoadingOptions ? "Memuat..." : "Pilih AM"}
+              disabled={!!optionsError}
+              placeholder="Pilih AM"
             />
-            <Input label="NIP AM" name="nipAM" value={formData.nipAM} onChange={handleInputChange} required />
+            <Input label="NIP AM (Baru)" name="nipAM" value={formData.nipAM} onChange={handleInputChange} required />
             <Select label="Area" name="area" value={formData.area} onChange={handleInputChange} options={areaOptions} required />
-            <Select label="Masa Kerja AM" name="masaKerjaAM" value={formData.masaKerjaAM} onChange={handleInputChange} options={masaKerjaOptions} required />
+            <Select label="Masa Kerja AM (Baru)" name="masaKerjaAM" value={formData.masaKerjaAM} onChange={handleInputChange} options={masaKerjaOptions} required />
             <div className="md:col-span-2">
                 <Select
                   label="Nama Toko"
@@ -350,6 +424,40 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
                 <Input label="Tanggal STTK" name="tanggalSttk" type="date" value={formData.tanggalSttk} onChange={handleInputChange} required />
             </div>
           </div>
+
+          <div className="mt-6 flex items-center gap-3 bg-gray-50 p-3 rounded-md">
+            <input
+              id="amChangeCheckbox"
+              type="checkbox"
+              checked={isAmChanged}
+              onChange={(e) => setIsAmChanged(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="amChangeCheckbox" className="text-sm font-medium text-gray-700">
+              Ada pergantian AM dalam 3 bulan terakhir?
+            </label>
+          </div>
+
+          {isAmChanged && (
+            <Card className="bg-orange-50 border border-orange-200 animate-fade-in-up">
+              <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Informasi AM Lama</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Select
+                  label="Nama AM Lama"
+                  name="namaAM"
+                  value={oldAmData.namaAM}
+                  onChange={handleOldAmChange}
+                  options={ALL_AM_OPTIONS}
+                  required={isAmChanged}
+                  placeholder="Pilih AM Lama"
+                />
+                <Input label="NIP AM Lama" name="nipAM" value={oldAmData.nipAM} onChange={handleOldAmChange} required={isAmChanged} />
+                <div className="md:col-span-2">
+                   <Select label="Masa Kerja AM Lama" name="masaKerjaAM" value={oldAmData.masaKerjaAM} onChange={handleOldAmChange} options={masaKerjaOptions} required={isAmChanged} />
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
         
         <div>

@@ -13,8 +13,8 @@ interface KpiData {
   amWithoutSubmissions: string[];
 }
 
-const ALL_AM_OPTIONS = [
-  'ADE IRMA S. A.',
+export const ALL_AM_OPTIONS = [
+  'ADE IRMA SEPTIANI',
   'APRIANA LUMBAN GAOL',
   'AULIALOLA GALUS',
   'BAID SION BR SINAGA',
@@ -27,7 +27,7 @@ const ALL_AM_OPTIONS = [
   'JESIKA SILITONGA',
   'JULAINI',
   'LELIANA OKTAVIA SARAGIH',
-  'LINDA NOVAWATI S',
+  'LINDA NOVAWATI SIHOMBING',
   'NARTA LENA GINTING',
   'NUR ADE ARYANI',
   'RYAN ADILA',
