@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { Card } from './ui/Card';
 import { SttkEntry } from '../hooks/useMockData';
@@ -136,10 +137,32 @@ export const SttkDetailModal: React.FC<SttkDetailModalProps> = ({ entry, onClose
 
                     {/* Files */}
                     <DetailSection title="Dokumen Terlampir" icon={FileText}>
-                        <ul className="space-y-3">
-                           <li className="flex items-center gap-2 text-gray-700"><FileText size={16} /> BAP STTK: <FileLink url={entry.files?.bap} label="Lihat File" /></li>
-                           <li className="flex items-center gap-2 text-gray-700"><FileText size={16} /> List Barang Expired: <FileLink url={entry.files?.expiredList} label="Lihat File" /></li>
-                           <li className="flex items-start gap-2 text-gray-700"><Camera size={16} className="mt-1" /> Foto Bukti Expired:
+                        <ul className="space-y-4">
+                           <li className="flex items-start gap-2 text-gray-700">
+                               <FileText size={16} className="mt-1 flex-shrink-0" />
+                               <span className="font-medium">BAP STTK:</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {entry.files?.bap && entry.files.bap.length > 0 ? entry.files.bap.map((fileUrl, i) => (
+                                        <FileLink key={i} url={fileUrl} label={`BAP #${i + 1}`} />
+                                    )) : (
+                                        <span className="font-medium text-gray-500">Tidak dilampirkan</span>
+                                    )}
+                                </div>
+                           </li>
+                           <li className="flex items-start gap-2 text-gray-700">
+                               <FileText size={16} className="mt-1 flex-shrink-0" />
+                               <span className="font-medium">List Barang Expired:</span>
+                               <div className="flex flex-wrap gap-2">
+                                    {entry.files?.expiredList && entry.files.expiredList.length > 0 ? entry.files.expiredList.map((fileUrl, i) => (
+                                        <FileLink key={i} url={fileUrl} label={`List #${i + 1}`} />
+                                    )) : (
+                                        <span className="font-medium text-gray-500">Tidak dilampirkan</span>
+                                    )}
+                                </div>
+                           </li>
+                           <li className="flex items-start gap-2 text-gray-700">
+                               <Camera size={16} className="mt-1 flex-shrink-0" />
+                               <span className="font-medium">Foto Bukti Expired:</span>
                                 <div className="flex flex-wrap gap-2">
                                     {entry.files?.photos && entry.files.photos.length > 0 ? entry.files.photos.map((photoUrl, i) => (
                                         <FileLink key={i} url={photoUrl} label={`Foto #${i + 1}`} />

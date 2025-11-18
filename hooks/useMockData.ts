@@ -49,8 +49,8 @@ export interface SttkEntry {
     jumlahDenda: number;
   }[];
   files: {
-    bap: string;
-    expiredList: string;
+    bap: string[];
+    expiredList: string[];
     photos: string[];
   };
 }
@@ -122,8 +122,8 @@ const mockSttkEntries: SttkEntry[] = Array.from({ length: 25 }, (_, i) => {
         { nama: `Karyawan B`, jabatan: 'Asistent Apoteker (AA)', masaKerja: '> 3 bulan', jumlahDenda: totalDenda * 0.275 },
     ],
     files: {
-        bap: `BAP_STTK_${i+1}.pdf`,
-        expiredList: `Expired_List_${i+1}.xlsx`,
+        bap: [`BAP_STTK_${i+1}.pdf`],
+        expiredList: [`Expired_List_${i+1}.xlsx`],
         photos: [`IMG_001.jpg`, `IMG_002.jpg`],
     }
   };

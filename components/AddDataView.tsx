@@ -303,6 +303,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const removeEmployee = (id: string) => { if (employees.length > 1) setEmployees(e => e.filter(emp => emp.id !== id)); };
   
   const handleAddFiles = (newFiles: File[], type: 'bap' | 'expiredList' | 'photos') => {
+    // Selalu tambahkan file baru untuk mendukung unggahan ganda di semua kategori
     setFiles(f => ({ ...f, [type]: [...f[type], ...newFiles] }));
   };
   
@@ -337,12 +338,9 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     setMessage('Mempersiapkan data file...');
 
     try {
-        // Mengonversi file menjadi Base64
-        // BAP & List Expired: Kirim hanya file pertama, sesuai struktur yang diharapkan server.
-        const bapData = await fileToBase64(files.bap[0]); 
-        const expiredListData = await fileToBase64(files.expiredList[0]);
-        
-        // Photos: Kirim semua file, karena ini diharapkan sebagai array.
+        // Mengonversi semua file menjadi Base64 dan mengirimnya sebagai array
+        const bapData = await Promise.all(files.bap.map(f => fileToBase64(f)));
+        const expiredListData = await Promise.all(files.expiredList.map(f => fileToBase64(f)));
         const photosData = await Promise.all(files.photos.map(f => fileToBase64(f)));
         
         setMessage('Mengirim laporan ke server...');
@@ -367,9 +365,9 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
             totalDenda: totalDendaSttk,
             penaltyDistribution: penaltyDistribution,
             files: {
-                bap: bapData, // Kirim sebagai objek tunggal
-                expiredList: expiredListData, // Kirim sebagai objek tunggal
-                photos: photosData // Kirim sebagai array objek
+                bap: bapData,
+                expiredList: expiredListData,
+                photos: photosData
             }
         };
         
@@ -558,11 +556,15 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Upload Bukti STTK</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} required />
+                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} multiple required />
                     <FileList files={files.bap} onRemove={(index) => handleFileRemove(index, 'bap')} />
                 </div>
                 <div>
-                    <FileUpload label="List Barang Expired" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} required />
+                    <label htmlFor="list-barang-expired-upload" className="block text-sm font-medium text-gray-700 mb-1">
+                        List Barang Expired <span className="text-red-500">*</span>
+                        <span className="ml-2 text-xs text-gray-500 font-normal">(upload dalam excel & PDF)</span>
+                    </label>
+                    <FileUpload id="list-barang-expired-upload" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} multiple />
                     <FileList files={files.expiredList} onRemove={(index) => handleFileRemove(index, 'expiredList')} />
                 </div>
                 <div>

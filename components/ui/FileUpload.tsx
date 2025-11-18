@@ -2,14 +2,17 @@ import React, { useRef } from 'react';
 import { UploadCloud } from 'lucide-react';
 
 interface FileUploadProps {
-  label: string;
+  label?: string;
+  id?: string;
   onFileSelect: (files: File[]) => void;
   multiple?: boolean;
   required?: boolean;
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ label, onFileSelect, multiple = false, required = false }) => {
+export const FileUpload: React.FC<FileUploadProps> = ({ label, id, onFileSelect, multiple = false, required = false }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Generate a stable ID for the input, essential for accessibility (htmlFor).
+  const inputId = id || (label ? label.replace(/\s+/g, '-') : `file-input-${useRef(Math.random().toString(36).substring(7)).current}`);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = event.target.files ? Array.from(event.target.files) : [];
@@ -38,9 +41,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ label, onFileSelect, mul
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
+      {label && (
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+      )}
       <div 
         className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md transition-colors hover:border-blue-400"
         onDrop={handleDrop}
@@ -50,13 +55,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({ label, onFileSelect, mul
           <UploadCloud className="mx-auto h-12 w-12 text-gray-400" />
           <div className="flex text-sm text-gray-600">
             <label
-              htmlFor={label.replace(/\s+/g, '-')}
+              htmlFor={inputId}
               className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500"
             >
               <span>Upload file(s)</span>
               <input
-                id={label.replace(/\s+/g, '-')}
-                name={label.replace(/\s+/g, '-')}
+                id={inputId}
+                name={inputId}
                 type="file"
                 className="sr-only"
                 onChange={handleFileChange}
