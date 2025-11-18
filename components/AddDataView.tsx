@@ -45,7 +45,7 @@ const initialOldAmData = { namaAM: '', nipAM: '', masaKerjaAM: '' };
 
 
 const areaOptions = [ 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Timur', 'Jakarta Pusat', 'Jakarta Selatan', 'Tangerang', 'Tangerang Selatan', 'Bekasi', 'Bogor', 'Depok', 'Bandung' ];
-const jabatanOptions = [ 'Area Manager', 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)', 'Asistent Apoteker (AA)' ];
+const jabatanOptions = [ 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)', 'Tenaga Kefarmasian (TTK)' ];
 const masaKerjaOptions = ['> 3 bulan', '< 3 bulan'];
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
@@ -109,6 +109,12 @@ const FileList: React.FC<{
     );
 };
 
+const InfoDisplay: React.FC<{ label: string; value: string; isLarge?: boolean; isCentered?: boolean }> = ({ label, value, isLarge = false, isCentered = false }) => (
+    <div className={`p-3 bg-slate-100 rounded-md ${isCentered ? 'text-center' : ''}`}>
+        <p className="text-sm text-gray-500">{label}</p>
+        <p className={`font-bold ${isLarge ? 'text-2xl text-red-600' : 'text-lg text-gray-800'}`}>{value}</p>
+    </div>
+);
 
 export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) => {
   const [formData, setFormData] = useState<FormDataState>(initialFormData);
@@ -191,81 +197,86 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     const dist: PenaltyDistributionItem[] = [];
     const namedEmployees = employees.filter(e => e.nama && e.jabatan && e.masaKerja);
     const hasBM = namedEmployees.some(e => e.jabatan === 'Branch Manager (BM)');
+    
+    // Rumus baru: Distribusi denda tim toko berdasarkan saham jabatan
+    const jobShares: Record<string, number> = {
+      'Apoteker': 2,
+      'Health Advisor (HA)': 5,
+      'Tenaga Kefarmasian (TTK)': 5,
+    };
 
-    // --- LOGIKA BARU UNTUK PERGANTIAN AM ---
     if (isAmChanged && oldAmData.namaAM && formData.namaAM) {
-      const hasShortTenureStoreEmployee = namedEmployees.some(e => e.masaKerja === '< 3 bulan');
-      const allPersonnel = [
-        { nama: formData.namaAM, nip: formData.nipAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan' },
-        { nama: oldAmData.namaAM, nip: oldAmData.nipAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan' },
-        ...namedEmployees,
-      ];
+      // --- LOGIKA DENGAN PERGANTIAN AM ---
+      const amPoolPercent = hasBM ? 5 : 10;
+      const newAmPercent = amPoolPercent / 2;
+      const oldAmPercent = amPoolPercent / 2;
+      
+      const bmPercent = hasBM ? 35 : 0;
+      const teamPoolPercent = hasBM ? 60 : 90;
 
-      if (hasShortTenureStoreEmployee) {
-        // Pengecualian: "Dibagi Rata" untuk semua personel
-        const totalPeople = allPersonnel.length;
-        if (totalPeople > 0) {
-          const penaltyPerPerson = totalDendaSttk / totalPeople;
-          allPersonnel.forEach(p => {
-            dist.push({ ...p, jumlahDenda: penaltyPerPerson });
+      // Alokasikan denda untuk AM baru dan lama
+      dist.push({
+        nama: formData.namaAM,
+        jabatan: 'Area Manager (Baru)',
+        masaKerja: formData.masaKerjaAM,
+        jumlahDenda: totalDendaSttk * (newAmPercent / 100),
+        nip: formData.nipAM
+      });
+      dist.push({
+        nama: oldAmData.namaAM,
+        jabatan: 'Area Manager (Lama)',
+        masaKerja: oldAmData.masaKerjaAM,
+        jumlahDenda: totalDendaSttk * (oldAmPercent / 100),
+        nip: oldAmData.nipAM
+      });
+      
+      // Alokasikan denda untuk BM jika ada
+      const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
+      if (hasBM && bmEmployee) {
+        dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * (bmPercent / 100) });
+      }
+
+      // Alokasikan sisa denda ke tim toko
+      const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
+      if (storeTeam.length > 0) {
+        const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
+        const teamWithShares = storeTeam.map(e => ({ ...e, shares: jobShares[e.jabatan] || 0 }));
+        const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
+        
+        if (totalShares > 0) {
+          teamWithShares.forEach(e => {
+            dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
           });
         }
-      } else {
-        // Logika Persentase Baru
-        if (hasBM) {
-          // Dengan BM
-          dist.push({ nama: formData.namaAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.025, nip: formData.nipAM });
-          dist.push({ nama: oldAmData.namaAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.025, nip: oldAmData.nipAM });
-          
-          const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
-          if (bmEmployee) dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * 0.375 });
-
-          const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
-          if (storeTeam.length > 0) {
-            const teamPoolAmount = totalDendaSttk * 0.575; // 55% + 2.5% penyesuaian
-            const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
-            const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
-            if (totalShares > 0) {
-              teamWithShares.forEach(e => {
-                dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
-              });
-            }
-          }
-        } else {
-          // Tanpa BM
-          dist.push({ nama: formData.namaAM, jabatan: 'Area Manager (Baru)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.05, nip: formData.nipAM });
-          dist.push({ nama: oldAmData.namaAM, jabatan: 'Area Manager (Lama)', masaKerja: '< 3 bulan', jumlahDenda: totalDendaSttk * 0.05, nip: oldAmData.nipAM });
-          
-          const storeTeam = namedEmployees; // Semua karyawan adalah tim
-          if (storeTeam.length > 0) {
-            const teamPoolAmount = totalDendaSttk * 0.90;
-            const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
-            const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
-            if (totalShares > 0) {
-              teamWithShares.forEach(e => {
-                dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
-              });
-            }
-          }
-        }
       }
+
     } else {
-      // --- LOGIKA LAMA (DEFAULT) ---
-      const amBasePercent = hasBM ? 7.5 : 10, bmBasePercent = hasBM ? 37.5 : 0, teamPoolPercent = hasBM ? 55 : 90;
+      // --- LOGIKA DEFAULT (TANPA PERGANTIAN AM) ---
+      const amBasePercent = hasBM ? 5 : 10;
+      const bmBasePercent = hasBM ? 35 : 0;
+      const teamPoolPercent = hasBM ? 60 : 90;
 
       if (formData.namaAM) {
-        dist.push({ nama: formData.namaAM, jabatan: 'Area Manager', masaKerja: formData.masaKerjaAM, jumlahDenda: totalDendaSttk * (amBasePercent / 100), nip: 'N/A' });
+        dist.push({
+          nama: formData.namaAM,
+          jabatan: 'Area Manager',
+          masaKerja: formData.masaKerjaAM,
+          jumlahDenda: totalDendaSttk * (amBasePercent / 100),
+          nip: formData.nipAM
+        });
       }
+
       const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
       if (hasBM && bmEmployee) {
         dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * (bmBasePercent / 100) });
       }
+
       const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
       if (storeTeam.length > 0) {
-        const teamWithShares = storeTeam.map(e => ({ ...e, shares: e.masaKerja.includes('< 3') ? (4/9) : 1 }));
+        const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
+        const teamWithShares = storeTeam.map(e => ({ ...e, shares: jobShares[e.jabatan] || 0 }));
         const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
         if (totalShares > 0) {
-          const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
           teamWithShares.forEach(e => {
             dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
           });
@@ -278,6 +289,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
         const order: Record<string, number> = {'Area Manager (Baru)': 1, 'Area Manager (Lama)': 2, 'Area Manager': 1, 'Branch Manager (BM)': 3};
         return (order[a.jabatan] || 4) - (order[b.jabatan] || 4);
     });
+    
     setPenaltyDistribution(dist);
   }, [totalDendaSttk, employees, formData, isAmChanged, oldAmData]);
   
@@ -546,51 +558,45 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Upload Bukti STTK</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} multiple required />
+                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} required />
                     <FileList files={files.bap} onRemove={(index) => handleFileRemove(index, 'bap')} />
                 </div>
                 <div>
-                    <FileUpload label="List Barang Expired (upload dalam excel dan pdf)" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} multiple required />
+                    <FileUpload label="List Barang Expired" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} required />
                     <FileList files={files.expiredList} onRemove={(index) => handleFileRemove(index, 'expiredList')} />
                 </div>
                 <div>
-                    <FileUpload label="Bukti Foto Barang Expired" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'photos')} multiple required />
+                    <FileUpload label="Foto Bukti Expired" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'photos')} multiple required />
                     <FileList files={files.photos} onRemove={(index) => handleFileRemove(index, 'photos')} />
                 </div>
             </div>
         </div>
-        
+
         <div className="pt-6 border-t">
-          {status === 'loading' && <StatusMessage type="loading" message={message} />}
-          {status === 'success' && <StatusMessage type="success" message={message} />}
-          {status === 'error' && <StatusMessage type="error" message={message} />}
-          <Button type="submit" disabled={status === 'loading'} className="w-full mt-4">{status === 'loading' ? 'Mengirim...' : 'Kirim Laporan'}</Button>
+          {status !== 'idle' && (
+            <div className={`p-4 mb-4 rounded-md text-sm ${
+              status === 'loading' ? 'bg-blue-50 text-blue-800' :
+              status === 'success' ? 'bg-green-50 text-green-800' :
+              'bg-red-50 text-red-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                {status === 'loading' && <Loader2 className="animate-spin" size={16} />}
+                {status === 'success' && <CheckCircle size={16} />}
+                {status === 'error' && <AlertTriangle size={16} />}
+                <span>{message}</span>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-end gap-4">
+            <Button type="button" onClick={resetForm} className="bg-gray-200 text-gray-800 hover:bg-gray-300">
+              Reset Form
+            </Button>
+            <Button type="submit" disabled={status === 'loading'}>
+              {status === 'loading' ? 'Mengirim...' : 'Kirim Laporan'}
+            </Button>
+          </div>
         </div>
       </form>
     </Card>
   );
-};
-
-const InfoDisplay: React.FC<{label: string, value: string, isLarge?: boolean, isCentered?: boolean}> = ({ label, value, isLarge, isCentered }) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-        <div className={`mt-1 p-2 w-full bg-gray-100 border rounded-md ${isLarge ? 'text-xl font-bold' : 'font-semibold'} ${isCentered ? 'text-center' : ''}`}>
-            {value}
-        </div>
-    </div>
-);
-
-const StatusMessage: React.FC<{type: 'loading' | 'success' | 'error', message: string}> = ({ type, message }) => {
-    const baseClasses = "flex justify-center items-center gap-2 p-3 rounded-md";
-    const styles = {
-        loading: { class: "bg-blue-50 text-blue-700", icon: <Loader2 className="animate-spin" /> },
-        success: { class: "bg-green-50 text-green-700", icon: <CheckCircle /> },
-        error: { class: "bg-red-50 text-red-700", icon: <AlertTriangle /> },
-    };
-    return (
-        <div className={`${baseClasses} ${styles[type].class}`}>
-            {styles[type].icon}
-            <span>{message}</span>
-        </div>
-    );
 };
