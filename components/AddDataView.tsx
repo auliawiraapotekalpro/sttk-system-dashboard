@@ -66,26 +66,44 @@ interface PenaltyDistributionItem {
 // Helper untuk mengubah File menjadi Base64
 const fileToBase64 = (file: File): Promise<FileData> => {
     return new Promise((resolve, reject) => {
+        if (!file) {
+            return reject(new Error("File object tidak valid."));
+        }
+
         const reader = new FileReader();
-        reader.readAsDataURL(file);
+
         reader.onload = () => {
-            const result = reader.result as string;
-            // Server mengharapkan hanya konten base64, bukan seluruh data URI.
-            // Kita pisahkan di sini karena tipe mime sudah dikirim secara terpisah.
-            const base64Content = result.split(',')[1];
-            if (!base64Content) {
-                reject(new Error(`Gagal mengonversi file: ${file.name}. Format data URL tidak valid.`));
-                return;
+            try {
+                const result = reader.result;
+
+                if (typeof result !== 'string') {
+                    throw new Error(`Hasil pembacaan file '${file.name}' bukan string.`);
+                }
+
+                // PENTING: Kita mengirimkan FULL Data URI (termasuk "data:image/png;base64,...")
+                // Ini mencegah error "split of undefined" di sisi server Google Apps Script
+                // jika server mencoba memparsing header MIME dari string.
+                const base64Content = result;
+
+                resolve({
+                    name: file.name,
+                    mimeType: file.type || 'application/octet-stream',
+                    base64: base64Content,
+                });
+
+            } catch (e) {
+                reject(e instanceof Error ? e : new Error(`Error tidak diketahui saat memproses file '${file.name}'`));
             }
-            resolve({
-                name: file.name,
-                mimeType: file.type,
-                base64: base64Content,
-            });
         };
-        reader.onerror = () => reject(new Error(`Gagal membaca file: ${file.name}`));
+
+        reader.onerror = () => {
+            reject(new Error(`Gagal membaca file '${file.name}'. Error: ${reader.error?.message || 'Tidak diketahui'}`));
+        };
+        
+        reader.readAsDataURL(file);
     });
 };
+
 
 const FileList: React.FC<{
     files: File[];
@@ -348,7 +366,8 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
         const reportData = {
             ...formData,
             isAmChanged,
-            oldAmData: isAmChanged ? oldAmData : null,
+            // Mengirim objek kosong alih-alih null untuk mencegah error akses properti di backend yang naif
+            oldAmData: isAmChanged ? oldAmData : {},
             lossDetails: {
               selisihPlus: parseFormattedNumber(lossData.selisihPlus),
               selisihMinus: parseFormattedNumber(lossData.selisihMinus),
@@ -385,7 +404,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     } catch (error) {
         setStatus('error');
         if (error instanceof Error) {
-            setMessage(error.message);
+            setMessage(`Terjadi kesalahan di server: ${error.message}`);
         } else {
             console.error("An unexpected error occurred during submission:", error);
             setMessage('Terjadi kesalahan yang tidak terduga saat memproses file.');
