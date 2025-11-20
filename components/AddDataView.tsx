@@ -403,12 +403,9 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const addEmployee = () => setEmployees(e => [...e, { ...initialEmployeeState, id: `emp-${Date.now()}` }]);
   const removeEmployee = (id: string) => { if (employees.length > 1) setEmployees(e => e.filter(emp => emp.id !== id)); };
   
+  // UPDATE: Allow multiple files for all types
   const handleAddFiles = (newFiles: File[], type: 'bap' | 'expiredList' | 'photos') => {
-    if (type === 'bap' || type === 'expiredList') {
-        setFiles(f => ({ ...f, [type]: newFiles.slice(0, 1) }));
-    } else {
-        setFiles(f => ({ ...f, [type]: [...f[type], ...newFiles] }));
-    }
+    setFiles(f => ({ ...f, [type]: [...f[type], ...newFiles] }));
   };
   
   const handleFileRemove = (index: number, type: 'bap' | 'expiredList' | 'photos') => {
@@ -441,8 +438,9 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     setMessage('Mempersiapkan data file...');
 
     try {
-        const bapData = files.bap.length > 0 ? await fileToBase64(files.bap[0]) : null;
-        const expiredListData = files.expiredList.length > 0 ? await fileToBase64(files.expiredList[0]) : null;
+        // UPDATE: Process BAP and Expired List as arrays (Promise.all) just like photos
+        const bapData = await Promise.all(files.bap.map(f => fileToBase64(f)));
+        const expiredListData = await Promise.all(files.expiredList.map(f => fileToBase64(f)));
         const photosData = await Promise.all(files.photos.map(f => fileToBase64(f)));
         
         setMessage('Mengirim laporan ke server...');
@@ -694,7 +692,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Upload Bukti STTK</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} required />
+                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} multiple required />
                     <FileList files={files.bap} onRemove={(index) => handleFileRemove(index, 'bap')} />
                 </div>
                 <div>
@@ -702,7 +700,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
                         List Barang Expired <span className="text-red-500">*</span>
                         <span className="ml-2 text-xs text-gray-500 font-normal">(upload dalam excel & PDF)</span>
                     </label>
-                    <FileUpload id="list-barang-expired-upload" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} />
+                    <FileUpload id="list-barang-expired-upload" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} multiple />
                     <FileList files={files.expiredList} onRemove={(index) => handleFileRemove(index, 'expiredList')} />
                 </div>
                 <div>
