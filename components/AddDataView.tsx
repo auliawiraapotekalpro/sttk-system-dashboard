@@ -49,8 +49,11 @@ const jabatanOptions = [ 'Branch Manager (BM)', 'Apoteker', 'Health Advisor (HA)
 const masaKerjaOptions = ['> 3 bulan', '< 3 bulan'];
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+
+// Helper untuk memparsing angka dari string terformat (misal: "-1.000.000" -> -1000000)
 const parseFormattedNumber = (str: string): number => {
     if (!str) return 0;
+    // Hapus semua karakter kecuali angka dan tanda minus
     const sanitized = str.toString().replace(/[^0-9-]/g, '');
     return parseInt(sanitized, 10) || 0;
 }
@@ -80,9 +83,6 @@ const fileToBase64 = (file: File): Promise<FileData> => {
                     throw new Error(`Hasil pembacaan file '${file.name}' bukan string.`);
                 }
 
-                // PENTING: Kita mengirimkan FULL Data URI (termasuk "data:image/png;base64,...")
-                // Ini mencegah error "split of undefined" di sisi server Google Apps Script
-                // jika server mencoba memparsing header MIME dari string.
                 const base64Content = result;
 
                 resolve({
@@ -155,7 +155,6 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const [isAmChanged, setIsAmChanged] = useState(false);
   const [oldAmData, setOldAmData] = useState(initialOldAmData);
 
-  // State untuk dropdown options
   const [tokoOptions, setTokoOptions] = useState<string[]>([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState<string | null>(null);
@@ -186,9 +185,18 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     const selisihPlus = parseFormattedNumber(lossData.selisihPlus);
     const selisihMinus = parseFormattedNumber(lossData.selisihMinus);
     const edAwal = parseFormattedNumber(lossData.edAwal);
+    
+    // Rumus Loss: Selisih (+) - Selisih (-) - ED Akhir (70%)
+    // Nilai selisihMinus dan edAwal sudah negatif dari input karena forceNegative=true
+    // Jadi kita menjumlahkan nilainya (karena nilai di variabel sudah minus)
+    
+    const edAkhir = edAwal * 0.7;
+    // Perhitungan saldo akhir: Plus + Minus + ED Akhir (yang negatif)
+    const saldoAkhir = selisihPlus + selisihMinus + edAkhir;
+
     setCalculatedLoss({
-        edAkhir: edAwal * 0.7,
-        dendaAkhir: selisihPlus + selisihMinus + (edAwal * 0.7),
+        edAkhir: edAkhir,
+        dendaAkhir: saldoAkhir >= 0 ? 0 : saldoAkhir, // Jika positif/0 maka 0, jika negatif maka denda
     });
   }, [lossData]);
 
@@ -196,7 +204,11 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     const nilaiPlus = parseFormattedNumber(varianceData.nilaiPlus);
     const nilaiMinus = parseFormattedNumber(varianceData.nilaiMinus);
     const edAwal = parseFormattedNumber(varianceData.edAwal);
-    const totalCalc = nilaiPlus - Math.abs(nilaiMinus) + edAwal;
+    
+    // Rumus Variance / Akurasi (Nilai Mutlak/Absolut)
+    // Total = |Nilai Plus| + |Nilai Minus| + |ED Awal|
+    const totalCalc = Math.abs(nilaiPlus) + Math.abs(nilaiMinus) + Math.abs(edAwal);
+    
     let kategori = 'A', denda = 0;
     if (totalCalc > 10000000) {
       kategori = 'C'; denda = 1000000;
@@ -206,123 +218,197 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     setCalculatedVariance({ total: totalCalc, kategori, denda });
   }, [varianceData]);
 
+  // --- LOGIKA UTAMA PERHITUNGAN DENDA (SILOED GROUPS) ---
   useEffect(() => {
     if (totalDendaSttk <= 0) {
       setPenaltyDistribution([]);
       return;
     }
 
-    const dist: PenaltyDistributionItem[] = [];
+    interface GroupMember {
+        id: string;
+        nama: string;
+        jabatan: string;
+        masaKerja: string;
+        nip: string;
+    }
+
+    // 1. KUMPULKAN DATA KARYAWAN
     const namedEmployees = employees.filter(e => e.nama && e.jabatan && e.masaKerja);
-    const hasBM = namedEmployees.some(e => e.jabatan === 'Branch Manager (BM)');
     
-    // Rumus baru: Distribusi denda tim toko berdasarkan saham jabatan
-    const jobShares: Record<string, number> = {
-      'Apoteker': 2,
-      'Health Advisor (HA)': 5,
-      'Tenaga Kefarmasian (TTK)': 5,
+    // Group BM
+    const bmList: GroupMember[] = namedEmployees
+        .filter(e => e.jabatan === 'Branch Manager (BM)')
+        .map(e => ({ ...e, id: e.id }));
+    
+    // Group Store Team (Semua selain BM)
+    const storeTeamList: GroupMember[] = namedEmployees
+        .filter(e => e.jabatan !== 'Branch Manager (BM)')
+        .map(e => ({ ...e, id: e.id }));
+
+    // Group AM
+    const amList: GroupMember[] = [];
+    // AM Baru
+    if (formData.namaAM) {
+        amList.push({
+            id: 'am-new',
+            nama: formData.namaAM,
+            nip: formData.nipAM,
+            masaKerja: formData.masaKerjaAM,
+            jabatan: isAmChanged ? 'Area Manager (Baru)' : 'Area Manager'
+        });
+    }
+    // AM Lama
+    if (isAmChanged && oldAmData.namaAM) {
+        amList.push({
+            id: 'am-old',
+            nama: oldAmData.namaAM,
+            nip: oldAmData.nipAM,
+            masaKerja: oldAmData.masaKerjaAM,
+            jabatan: 'Area Manager (Lama)'
+        });
+    }
+
+    const hasBM = bmList.length > 0;
+
+    // 2. TENTUKAN ALOKASI PERSEN PER GROUP
+    let amAlloc = 0, bmAlloc = 0, teamAlloc = 0;
+
+    if (hasBM) {
+        amAlloc = 0.05; // 5%
+        bmAlloc = 0.35; // 35%
+        teamAlloc = 0.60; // 60%
+    } else {
+        amAlloc = 0.10; // 10%
+        bmAlloc = 0;
+        teamAlloc = 0.90; // 90%
+    }
+
+    // 3. FUNGSI DISTRIBUSI INTERNAL GROUP
+    // Logika: Total Denda Group dibagi rata. 
+    // Junior (< 3 bulan / AM Lama) bayar 50%.
+    // Defisit ditanggung oleh Senior (> 3 bulan & Bukan AM Lama) di group yang sama.
+    // Jika TIDAK ADA Senior di group, Junior bayar FULL (diskon batal).
+    const distributeToGroup = (members: GroupMember[], groupTotalDenda: number): PenaltyDistributionItem[] => {
+        if (members.length === 0) return [];
+
+        const baseShare = groupTotalDenda / members.length;
+        
+        // Cari siapa saja senior yang berhak menanggung beban (Redistribution receivers)
+        // AM Lama TIDAK PERNAH dianggap senior (tidak menanggung beban)
+        const seniors = members.filter(m => 
+            m.masaKerja === '> 3 bulan' && m.jabatan !== 'Area Manager (Lama)'
+        );
+
+        // Diskon Junior hanya aktif jika ada Senior yang bisa menanggung (atau sesuai kebijakan user)
+        // Berdasarkan contoh user: AM < 3 bulan (tanpa senior) bayar 100k (full). 
+        // Tim Toko Junior (ada senior) bayar 50%.
+        const canRedistribute = seniors.length > 0;
+
+        let groupDeficit = 0;
+        
+        // Tahap 1: Hitung kontribusi awal (dengan potensi diskon)
+        const preliminaryResults = members.map(m => {
+            const isAmLama = m.jabatan === 'Area Manager (Lama)';
+            const isJunior = m.masaKerja === '< 3 bulan' || isAmLama;
+            
+            let finalShare = baseShare;
+            
+            if (isJunior && canRedistribute) {
+                finalShare = baseShare * 0.5; // Bayar 50%
+                groupDeficit += (baseShare - finalShare); // Sisa 50% masuk defisit
+            }
+            
+            return {
+                ...m,
+                jumlahDenda: finalShare,
+                isReceiver: !isAmLama && m.masaKerja === '> 3 bulan' // Penanda penerima redistribusi
+            };
+        });
+
+        // Tahap 2: Redistribusi defisit ke Senior
+        if (groupDeficit > 0 && canRedistribute) {
+            const deficitPerSenior = groupDeficit / seniors.length;
+            preliminaryResults.forEach(m => {
+                if (m.isReceiver) {
+                    m.jumlahDenda += deficitPerSenior;
+                }
+            });
+        }
+
+        return preliminaryResults.map(r => ({
+            nama: r.nama,
+            jabatan: r.jabatan,
+            masaKerja: r.masaKerja,
+            nip: r.nip,
+            jumlahDenda: r.jumlahDenda
+        }));
     };
 
-    if (isAmChanged && oldAmData.namaAM && formData.namaAM) {
-      // --- LOGIKA DENGAN PERGANTIAN AM ---
-      const amPoolPercent = hasBM ? 5 : 10;
-      const newAmPercent = amPoolPercent / 2;
-      const oldAmPercent = amPoolPercent / 2;
-      
-      const bmPercent = hasBM ? 35 : 0;
-      const teamPoolPercent = hasBM ? 60 : 90;
+    // 4. JALANKAN DISTRIBUSI
+    const amResults = distributeToGroup(amList, totalDendaSttk * amAlloc);
+    const bmResults = distributeToGroup(bmList, totalDendaSttk * bmAlloc);
+    const teamResults = distributeToGroup(storeTeamList, totalDendaSttk * teamAlloc);
 
-      // Alokasikan denda untuk AM baru dan lama
-      dist.push({
-        nama: formData.namaAM,
-        jabatan: 'Area Manager (Baru)',
-        masaKerja: formData.masaKerjaAM,
-        jumlahDenda: totalDendaSttk * (newAmPercent / 100),
-        nip: formData.nipAM
-      });
-      dist.push({
-        nama: oldAmData.namaAM,
-        jabatan: 'Area Manager (Lama)',
-        masaKerja: oldAmData.masaKerjaAM,
-        jumlahDenda: totalDendaSttk * (oldAmPercent / 100),
-        nip: oldAmData.nipAM
-      });
-      
-      // Alokasikan denda untuk BM jika ada
-      const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
-      if (hasBM && bmEmployee) {
-        dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * (bmPercent / 100) });
-      }
+    // 5. GABUNGKAN HASIL
+    const finalDist = [...amResults, ...bmResults, ...teamResults];
 
-      // Alokasikan sisa denda ke tim toko
-      const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
-      if (storeTeam.length > 0) {
-        const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
-        const teamWithShares = storeTeam.map(e => ({ ...e, shares: jobShares[e.jabatan] || 0 }));
-        const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
-        
-        if (totalShares > 0) {
-          teamWithShares.forEach(e => {
-            dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
-          });
-        }
-      }
-
-    } else {
-      // --- LOGIKA DEFAULT (TANPA PERGANTIAN AM) ---
-      const amBasePercent = hasBM ? 5 : 10;
-      const bmBasePercent = hasBM ? 35 : 0;
-      const teamPoolPercent = hasBM ? 60 : 90;
-
-      if (formData.namaAM) {
-        dist.push({
-          nama: formData.namaAM,
-          jabatan: 'Area Manager',
-          masaKerja: formData.masaKerjaAM,
-          jumlahDenda: totalDendaSttk * (amBasePercent / 100),
-          nip: formData.nipAM
-        });
-      }
-
-      const bmEmployee = namedEmployees.find(e => e.jabatan === 'Branch Manager (BM)');
-      if (hasBM && bmEmployee) {
-        dist.push({ ...bmEmployee, jumlahDenda: totalDendaSttk * (bmBasePercent / 100) });
-      }
-
-      const storeTeam = namedEmployees.filter(e => e.jabatan !== 'Branch Manager (BM)');
-      if (storeTeam.length > 0) {
-        const teamPoolAmount = totalDendaSttk * (teamPoolPercent / 100);
-        const teamWithShares = storeTeam.map(e => ({ ...e, shares: jobShares[e.jabatan] || 0 }));
-        const totalShares = teamWithShares.reduce((sum, e) => sum + e.shares, 0);
-        if (totalShares > 0) {
-          teamWithShares.forEach(e => {
-            dist.push({ ...e, jumlahDenda: teamPoolAmount * (e.shares / totalShares) });
-          });
-        }
-      }
-    }
-    
-    // Logika pengurutan untuk menampilkan AM di atas, lalu BM
-    dist.sort((a,b) => {
-        const order: Record<string, number> = {'Area Manager (Baru)': 1, 'Area Manager (Lama)': 2, 'Area Manager': 1, 'Branch Manager (BM)': 3};
-        return (order[a.jabatan] || 4) - (order[b.jabatan] || 4);
+    // Sort agar urutan rapi: AM -> BM -> Lainnya
+    finalDist.sort((a,b) => {
+        const order: Record<string, number> = {
+            'Area Manager (Baru)': 1, 
+            'Area Manager (Lama)': 2, 
+            'Area Manager': 1, 
+            'Branch Manager (BM)': 3
+        };
+        // Default priority 4 for staff
+        const rankA = order[a.jabatan] || 4;
+        const rankB = order[b.jabatan] || 4;
+        return rankA - rankB;
     });
-    
-    setPenaltyDistribution(dist);
+
+    setPenaltyDistribution(finalDist);
+
   }, [totalDendaSttk, employees, formData, isAmChanged, oldAmData]);
   
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
   const handleOldAmChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setOldAmData(p => ({ ...p, [e.target.name]: e.target.value }));
-  const handleLossInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setLossData(p => ({ ...p, [e.target.name]: e.target.value }));
-  const handleVarianceInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setVarianceData(p => ({ ...p, [e.target.name]: e.target.value }));
+  
+  // --- FUNGSI INPUT BARU UNTUK MATA UANG OTOMATIS ---
+  const handleCurrencyInput = (
+    e: React.ChangeEvent<HTMLInputElement>, 
+    setter: React.Dispatch<React.SetStateAction<any>>, 
+    forceNegative: boolean = false
+  ) => {
+      const rawValue = e.target.value.replace(/[^0-9]/g, ''); // Hanya ambil angka
+      
+      if (!rawValue) {
+          setter((prev: any) => ({ ...prev, [e.target.name]: '' }));
+          return;
+      }
+
+      const numberVal = parseInt(rawValue, 10);
+      let formatted = new Intl.NumberFormat('id-ID').format(numberVal);
+      
+      // Jika field ini wajib negatif (misal Selisih Minus), tambahkan '-' di depan otomatis
+      if (forceNegative) {
+          formatted = '-' + formatted;
+      }
+
+      setter((prev: any) => ({ ...prev, [e.target.name]: formatted }));
+  };
+
   const handleEmployeeChange = (id: string, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setEmployees(emps => emps.map(emp => emp.id === id ? { ...emp, [e.target.name]: e.target.value } : emp));
   const addEmployee = () => setEmployees(e => [...e, { ...initialEmployeeState, id: `emp-${Date.now()}` }]);
   const removeEmployee = (id: string) => { if (employees.length > 1) setEmployees(e => e.filter(emp => emp.id !== id)); };
   
   const handleAddFiles = (newFiles: File[], type: 'bap' | 'expiredList' | 'photos') => {
-    // Selalu tambahkan file baru untuk mendukung unggahan ganda di semua kategori
-    setFiles(f => ({ ...f, [type]: [...f[type], ...newFiles] }));
+    if (type === 'bap' || type === 'expiredList') {
+        setFiles(f => ({ ...f, [type]: newFiles.slice(0, 1) }));
+    } else {
+        setFiles(f => ({ ...f, [type]: [...f[type], ...newFiles] }));
+    }
   };
   
   const handleFileRemove = (index: number, type: 'bap' | 'expiredList' | 'photos') => {
@@ -345,7 +431,6 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Validasi file yang wajib diisi
     if (files.bap.length === 0 || files.expiredList.length === 0 || files.photos.length === 0) {
         setStatus('error');
         setMessage('Harap unggah semua file yang wajib diisi (BAP, List Barang, dan Foto).');
@@ -356,9 +441,8 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
     setMessage('Mempersiapkan data file...');
 
     try {
-        // Mengonversi semua file menjadi Base64 dan mengirimnya sebagai array
-        const bapData = await Promise.all(files.bap.map(f => fileToBase64(f)));
-        const expiredListData = await Promise.all(files.expiredList.map(f => fileToBase64(f)));
+        const bapData = files.bap.length > 0 ? await fileToBase64(files.bap[0]) : null;
+        const expiredListData = files.expiredList.length > 0 ? await fileToBase64(files.expiredList[0]) : null;
         const photosData = await Promise.all(files.photos.map(f => fileToBase64(f)));
         
         setMessage('Mengirim laporan ke server...');
@@ -366,7 +450,6 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
         const reportData = {
             ...formData,
             isAmChanged,
-            // Mengirim objek kosong alih-alih null untuk mencegah error akses properti di backend yang naif
             oldAmData: isAmChanged ? oldAmData : {},
             lossDetails: {
               selisihPlus: parseFormattedNumber(lossData.selisihPlus),
@@ -492,9 +575,27 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
         <div>
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">(1) Perhitungan Kehilangan / Loss</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input label="Selisih (+)" name="selisihPlus" value={lossData.selisihPlus} onChange={handleLossInputChange} placeholder="Contoh: 5000000" />
-                <Input label="Selisih (–)" name="selisihMinus" value={lossData.selisihMinus} onChange={handleLossInputChange} placeholder="Contoh: -1000000" />
-                <Input label="ED Awal (–)" name="edAwal" value={lossData.edAwal} onChange={handleLossInputChange} placeholder="Contoh: -10000000" />
+                <Input 
+                    label="Selisih (+)" 
+                    name="selisihPlus" 
+                    value={lossData.selisihPlus} 
+                    onChange={(e) => handleCurrencyInput(e, setLossData, false)} 
+                    placeholder="Contoh: 5.000.000" 
+                />
+                <Input 
+                    label="Selisih (–)" 
+                    name="selisihMinus" 
+                    value={lossData.selisihMinus} 
+                    onChange={(e) => handleCurrencyInput(e, setLossData, true)} 
+                    placeholder="Otomatis minus saat ketik, contoh: -1.000.000" 
+                />
+                <Input 
+                    label="ED Awal (–)" 
+                    name="edAwal" 
+                    value={lossData.edAwal} 
+                    onChange={(e) => handleCurrencyInput(e, setLossData, true)} 
+                    placeholder="Otomatis minus saat ketik, contoh: -10.000.000" 
+                />
                 <InfoDisplay label="ED Akhir (70%)" value={formatCurrency(calculatedLoss.edAkhir)} />
             </div>
             <div className="mt-6 pt-4 border-t border-dashed">
@@ -505,9 +606,27 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
         <div>
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">(2) Perhitungan Variance / Akurasi</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input label="Nilai (+)" name="nilaiPlus" value={varianceData.nilaiPlus} onChange={handleVarianceInputChange} placeholder="Contoh: 5000000" />
-                <Input label="Nilai (–)" name="nilaiMinus" value={varianceData.nilaiMinus} onChange={handleVarianceInputChange} placeholder="Contoh: -1000000" />
-                <Input label="ED Awal" name="edAwal" value={varianceData.edAwal} onChange={handleVarianceInputChange} placeholder="Contoh: 10000000" />
+                <Input 
+                    label="Nilai (+)" 
+                    name="nilaiPlus" 
+                    value={varianceData.nilaiPlus} 
+                    onChange={(e) => handleCurrencyInput(e, setVarianceData, false)} 
+                    placeholder="Contoh: 5.000.000" 
+                />
+                <Input 
+                    label="Nilai (–)" 
+                    name="nilaiMinus" 
+                    value={varianceData.nilaiMinus} 
+                    onChange={(e) => handleCurrencyInput(e, setVarianceData, true)} 
+                    placeholder="Otomatis minus saat ketik, contoh: -1.000.000" 
+                />
+                <Input 
+                    label="ED Awal" 
+                    name="edAwal" 
+                    value={varianceData.edAwal} 
+                    onChange={(e) => handleCurrencyInput(e, setVarianceData, false)} 
+                    placeholder="Contoh: 10.000.000" 
+                />
             </div>
              <div className="mt-6 pt-4 border-t border-dashed grid grid-cols-1 md:grid-cols-3 gap-6">
                 <InfoDisplay label="Total" value={formatCurrency(calculatedVariance.total)} />
@@ -575,7 +694,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
             <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">Upload Bukti STTK</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div>
-                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} multiple required />
+                    <FileUpload label="BAP STTK" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'bap')} required />
                     <FileList files={files.bap} onRemove={(index) => handleFileRemove(index, 'bap')} />
                 </div>
                 <div>
@@ -583,7 +702,7 @@ export const AddDataView: React.FC<AddDataViewProps> = ({ onReportSubmitted }) =
                         List Barang Expired <span className="text-red-500">*</span>
                         <span className="ml-2 text-xs text-gray-500 font-normal">(upload dalam excel & PDF)</span>
                     </label>
-                    <FileUpload id="list-barang-expired-upload" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} multiple />
+                    <FileUpload id="list-barang-expired-upload" onFileSelect={(newFiles) => handleAddFiles(newFiles, 'expiredList')} />
                     <FileList files={files.expiredList} onRemove={(index) => handleFileRemove(index, 'expiredList')} />
                 </div>
                 <div>
